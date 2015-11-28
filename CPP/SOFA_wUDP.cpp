@@ -216,7 +216,7 @@ void initUDP()
 void binauralCalculation()
 {
 
-	cout<<"\nOrientation: oX="<<oX<<":  oY="<<oY<<":  oZ="<<oZ;
+	//cout<<"\nOrientation: oX="<<oX<<":  oY="<<oY<<":  oZ="<<oZ;
 
 	//
 	//	if((++aziTimer)>=10)

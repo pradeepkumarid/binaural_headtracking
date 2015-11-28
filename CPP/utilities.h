@@ -2,7 +2,7 @@
 #define UTILITIES_H
 
 #define PORT 8888
-#define SERVER "192.168.0.12"
+#define SERVER "192.168.0.15"
 #define BUFLEN 1024
 
 #define CHUNK 1024
