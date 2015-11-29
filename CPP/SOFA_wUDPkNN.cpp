@@ -7,11 +7,17 @@
 #include "Gamma/Delay.h"
 #include "Gamma/Filter.h"
 #include "Gamma/SamplePlayer.h"
+#include "allocore/math/al_Mat.hpp"
+#include "allocore/math/al_Vec.hpp"
+#include "allocore/spatial/al_HashSpace.hpp"
 
+#include <math.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
 #include "../libsofa/src/SOFA.h"
+#include "../ann_1.1.2/include/ANN/ANN.h"
+
 #include "utilities.h"
 
 #include <pthread.h>
@@ -49,7 +55,9 @@ float outputBuff_R[CHUNK];
 float overlapBuff_L[200-1];
 float overlapBuff_R[200-1];
 int aziTimer = 0;
-int azimuth = 0;
+
+float azimuth = 0;
+float elevation = 0;
 
 
 //UDP params
@@ -59,6 +67,28 @@ char buf[BUFLEN];
 float oX, oY, oZ;
 pthread_t orienListenerthread;
 bool enableListen;
+
+
+al::Vec3f virtSourcePos; //X,Y,Z
+al::Vec3f relSourcePos; //X' , Y', Z'
+al::Mat3f rotMatrix; //R
+
+
+
+//For k-nearest neighbours
+
+int				k				= 3;			// number of nearest neighbors
+int				dim				= 3;			// dimension
+double			errBound		= 1;			// error bound
+int				maxPts			= 1250;			// maximum number of data points; 1250 in this case
+
+int					nPts;					// actual number of data points
+ANNpointArray		dataPts;				// data points
+ANNpoint			queryPt;				// query point
+ANNidxArray			nnIdx;					// near neighbor indices
+ANNdistArray		dists;					// near neighbor distances
+ANNkd_tree*			kdTree;					// search structure
+
 
 static void TestFileConvention(const string & filename,
 		ostream & output = cout)
@@ -170,8 +200,6 @@ static void DisplayInformations(const string & filename,
 	}
 }
 
-
-
 void initHRTF()
 {
 	//Initializing Source Positions
@@ -211,61 +239,101 @@ void initUDP()
 
 }
 
+void initVirtualSource()
+{
+	//Audio Source Position
+	virtSourcePos = al::Vec3f(0.0f,0.0f,1.0f);
+	relSourcePos = al::Vec3f(0.0f,0.0f,1.0f);
+}
 
+void initNearestNeighbourDS()
+{
+	std::cout<<"\n initNearestNeighbourDS";
+	queryPt = annAllocPt(dim);					    // allocate query point
+	dataPts = annAllocPts(maxPts, dim);			// allocate data points
+	nnIdx = new ANNidx[k];						// allocate near neigh indices
+	dists = new ANNdist[k];						// allocate near neighbor dists
+
+	nPts = 0; //source_dims.x
+
+	//read data points
+	int tmpIndex = -1;
+	for( size_t i = 0; i < source_dims[0]; i++ )
+	{
+
+		tmpIndex = array2DIndex(i, 0, source_dims[0], source_dims[1]);  //source_dims = 1250 x 3
+
+		//x = sin φ cos θ, y = sin θ, z = cos φ cos θ.  φ-azi   θ-ele
+		float phi = source_pos[tmpIndex] * PI / 180.0f;
+		float theta = source_pos[tmpIndex+1] * PI / 180.0f;
+		//float length = source_pos[tmpIndex+2]; //Useless as of now. =1 always
+
+		//Store the points in cartesian coords
+		dataPts[i][0] = sin (phi) * cos(theta);
+		dataPts[i][1] = sin (theta);
+		dataPts[i][2] = cos (phi) * cos (theta);
+
+		//cout<<i<<" :"<<tmpIndex<<":  "<<dataPts[i][0]<<":"<<dataPts[i][1]<<":"<<dataPts[i][2]<<endl;
+
+	}
+
+	kdTree = new ANNkd_tree(					// build search structure
+			dataPts,					// the data points
+			source_dims[0],						// number of points
+			dim);						// dimension of space
+
+	cout<<"\nCreated kdtree with nPts= "<<kdTree->nPoints();
+
+}
 
 void binauralCalculation()
 {
 
-	//cout<<"\nOrientation: oX="<<oX<<":  oY="<<oY<<":  oZ="<<oZ;
+	////Hardcoding Headtracking data
+	//oX = 0; oY=0; oZ=0;
 
+	cout<<"\n oX="<<oX<<" :oY="<<oY<<" :oZ="<<oZ;
+	loadRotMatrix(rotMatrix, oX, oY,oZ);
+	relSourcePos = inverse(rotMatrix) * virtSourcePos;
+
+	//cout<<"\nRelSourcePos:"<<relSourcePos.x<<":"<<relSourcePos.y<<":"<<relSourcePos.z;
+	float R1 = sqrt(relSourcePos.x * relSourcePos.x + relSourcePos.y * relSourcePos.y + relSourcePos.z* relSourcePos.z);
+	elevation = asin(relSourcePos.y / R1);
+	azimuth = asin(relSourcePos.x / (R1*elevation));
+
+	//float theta = elevation * 180 / PI;
+	//float phi = azimuth * 180 / PI;
+
+	////Hardcoding theta, phi
+	//phi = 150 ;  theta = 0;
 	//
-	//	if((++aziTimer)>=10)
-	//	{
-	//		aziTimer = 0;
-	//		azimuth+=5;
-	//		if(azimuth>=360)
-	//			azimuth = 0;
-	//
-	//		cout<<"\nAzimuth = "<<azimuth;
-	//	}
-
-	azimuth = oZ;
-	if(azimuth>=360)
-		azimuth-=360;
-	else if (azimuth<0)
-		azimuth+=360;
-
-	cout<<"\n Azimuth="<<azimuth;
+	//	cout<<"\nRel Azi="<<phi<<" Ele="<<theta;
+	//	phi = phi * PI / 180;
+	//	theta = theta * PI / 180;
 
 	//Finding HRTF index for object
 	int index = -1;
 	int tmpIndex = -1;
 	int IR_index = -1;
 
-	float prevMinDiff = 999;
-	for( size_t i = 0; i < source_dims[0]; i++ ) //idx
-	{
-		tmpIndex = array2DIndex(i, 0, source_dims[0], source_dims[1]);
-		//tmpIndex => azimuth ; tmpIndex+1 =>elevation ; tmpIndex+2 =>height
+	queryPt[0] = sin (azimuth) * cos(elevation);
+	queryPt[1] = sin (elevation);
+	queryPt[2] = cos (azimuth) * cos (elevation);
 
-		if (abs(source_pos[tmpIndex+1]) < 0.1) //check for elevation = 0 ; 0.1 is tolerance
-		{
-			if (abs(source_pos[tmpIndex] - azimuth) < prevMinDiff)
-			{
-				prevMinDiff = abs(source_pos[tmpIndex] - azimuth) ;
-				index=i;
-			}
-		}
-	}
+	//cout<<"\n New Source Pos : "<<queryPt[0]<<":"<<queryPt[1]<<":"<<queryPt[2];
 
-	if(index ==-1)
-	{
-		cout<<"\nNo index found!!!";
-		return;
-	}
+	kdTree->annkSearch(						// search
+			queryPt,						// query point
+			k,								// number of near neighbors
+			nnIdx,							// nearest neighbors (returned)
+			dists,							// distance (returned)
+			errBound);						// error bound
 
+	//cout<<"\n Indices : "<<nnIdx[0]<<","<<nnIdx[1]<<","<<nnIdx[2];
+	index =nnIdx[0];
 	tmpIndex = array2DIndex(index, 0, source_dims[0], source_dims[1]);
-	cout<<"\nIndex = "<<index<<" with diff="<<prevMinDiff<<" found azi="<<source_pos[tmpIndex]<<" ele="<<source_pos[tmpIndex+1];
+
+	//cout<<"\nKD : Index = "<<index<<" with diff="<<dists[0]<<" found azi="<<source_pos[tmpIndex]<<" ele="<<source_pos[tmpIndex+1];
 
 	IR_index = array3DIndex(index, 0, 0, M, R, N);  //Left channel
 	convolve(inputBuff, values, IR_index, outputBuff_L, overlapBuff_L);
@@ -332,9 +400,7 @@ void *getOrientations(void *x_void_ptr)
 			sBuf.erase(0, pos + delimiter.length());
 			itr++;
 		}
-
 		oY = atof(sBuf.c_str());
-
 		//cout<<"\nThread : oZ="<<oZ;
 	}
 	return NULL;
@@ -352,6 +418,8 @@ int main()
 
 	//Initializing Orientation listener
 	initUDP();
+	initVirtualSource();
+
 	int rc;
 	enableListen = true;
 	rc = pthread_create(&orienListenerthread, NULL, getOrientations,NULL );
@@ -361,8 +429,6 @@ int main()
 		exit(-1);
 	}
 
-
-
 	const string filename = "/home/pradeep/Q4/SpatialAudio/Project/CPP/subject_020.sofa";
 
 	TestFileConvention( filename );
@@ -371,7 +437,7 @@ int main()
 
 	initHRTF();
 
-
+	initNearestNeighbourDS();
 	//Intializing audio
 
 	string filePath = WAV_FILE_NAME;

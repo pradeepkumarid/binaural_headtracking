@@ -1,9 +1,14 @@
+#include "allocore/math/al_Mat.hpp"
+#include "allocore/math/al_Vec.hpp"
+
 #ifndef UTILITIES_H
 #define UTILITIES_H
 
 #define PORT 8888
-#define SERVER "192.168.0.15"
+#define SERVER "192.168.43.79"
 #define BUFLEN 1024
+
+#define PI 3.14159
 
 #define CHUNK 1024
 #define WAV_FILE_NAME "/home/pradeep/Q4/SpatialAudio/Project/CPP/media/dani_california.wav"
@@ -68,6 +73,45 @@ inline void convolve(float inputBuff[], std::vector< double > source_pos, int in
 			overlapBuff[i-Alen] = tmp;
 	}
 
+}
+
+inline void loadRotMatrix(al::Mat3f &R, float phi, float theta, float psi)
+{
+	phi = phi * PI / 180.0f;
+	theta = theta * PI / 180.0f;
+	psi = psi * PI / 180.0f;
+
+	R(0,0) = cos(phi) * cos (theta);
+	R(0,1) = (cos(phi) * sin (theta) * sin (psi)) - (sin (phi) * cos (psi));
+	R(0,2) = (cos(phi) * sin (theta) * cos (psi)) + (sin(phi) * sin(psi));
+
+	R(1,0) = sin(phi) * cos (theta);
+	R(1,1) = (sin(phi) * sin(theta) * sin (psi) ) + (cos(phi) * cos(psi));
+	R(1,2) = (sin(phi) * sin(theta) * cos(psi) ) - (cos(phi) * sin(psi));
+
+	R(2,0) = -sin(theta);
+	R(2,1) = cos(theta) * sin(psi);
+	R(2,2) = cos(theta) * cos(psi);
+}
+
+al::Mat3f inverse(al::Mat3f A)
+{
+	al::Mat3f result;
+	double determinant =    +A(0,0)*(A(1,1)*A(2,2)-A(2,1)*A(1,2))
+	                        -A(0,1)*(A(1,0)*A(2,2)-A(1,2)*A(2,0))
+	                        +A(0,2)*(A(1,0)*A(2,1)-A(1,1)*A(2,0));
+	double invdet = 1/determinant;
+	result(0,0) =  (A(1,1)*A(2,2)-A(2,1)*A(1,2))*invdet;
+	result(1,0) = -(A(0,1)*A(2,2)-A(0,2)*A(2,1))*invdet;
+	result(2,0) =  (A(0,1)*A(1,2)-A(0,2)*A(1,1))*invdet;
+	result(0,1) = -(A(1,0)*A(2,2)-A(1,2)*A(2,0))*invdet;
+	result(1,1) =  (A(0,0)*A(2,2)-A(0,2)*A(2,0))*invdet;
+	result(2,1) = -(A(0,0)*A(1,2)-A(1,0)*A(0,2))*invdet;
+	result(0,2) =  (A(1,0)*A(2,1)-A(2,0)*A(1,1))*invdet;
+	result(1,2) = -(A(0,0)*A(2,1)-A(2,0)*A(0,1))*invdet;
+	result(2,2) =  (A(0,0)*A(1,1)-A(1,0)*A(0,1))*invdet;
+
+	return result;
 }
 
 
