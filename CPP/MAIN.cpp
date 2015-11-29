@@ -1,3 +1,5 @@
+#include "allocore/io/al_App.hpp"
+#include <time.h>
 #include <stdio.h>
 #include "Gamma/AudioIO.h"
 #include "Gamma/Domain.h"
@@ -22,7 +24,11 @@
 
 #include <pthread.h>
 
+
+
+
 using namespace gam;
+using namespace al;
 using namespace std;
 
 int frameCount    = CHUNK;
@@ -45,7 +51,6 @@ double set[500000];
 
 vector< size_t > source_dims;  //1250 x 3
 vector< double > source_pos;     //Source Positions
-
 
 unsigned int M,R,N;
 
@@ -72,7 +77,7 @@ bool enableListen;
 al::Vec3f virtSourcePos; //X,Y,Z
 al::Vec3f relSourcePos; //X' , Y', Z'
 al::Mat3f rotMatrix; //R
-//al::Pose rotPoseR;
+
 
 
 //For k-nearest neighbours
@@ -88,6 +93,7 @@ ANNpoint			queryPt;				// query point
 ANNidxArray			nnIdx;					// near neighbor indices
 ANNdistArray		dists;					// near neighbor distances
 ANNkd_tree*			kdTree;					// search structure
+
 
 
 static void TestFileConvention(const string & filename,
@@ -292,15 +298,9 @@ void binauralCalculation()
 	////Hardcoding Headtracking data
 	//oX = 0; oY=0; oZ=0;
 
-	cout<<"\n oX="<<oX<<" :oY="<<oY<<" :oZ="<<oZ;
-	loadRotMatrix(rotMatrix, oZ, oX,oY);
-//	relSourcePos = inverse(rotMatrix) * virtSourcePos;
-	relSourcePos = (rotMatrix.transpose()) * virtSourcePos;  //Transpose of rot mat is same as inv
-
-
-//	rotPoseR.quat().fromEuler(al::Vec3f(oX,oY,oZ));
-//	relSourcePos = inverse(rotPoseR.))) * virtSourcePos;
-
+	//cout<<"\n oX="<<oX<<" :oY="<<oY<<" :oZ="<<oZ;
+	loadRotMatrix(rotMatrix, oX, oY,oZ);
+	relSourcePos = inverse(rotMatrix) * virtSourcePos;
 
 	//cout<<"\nRelSourcePos:"<<relSourcePos.x<<":"<<relSourcePos.y<<":"<<relSourcePos.z;
 	float R1 = sqrt(relSourcePos.x * relSourcePos.x + relSourcePos.y * relSourcePos.y + relSourcePos.z* relSourcePos.z);
@@ -322,9 +322,9 @@ void binauralCalculation()
 	int tmpIndex = -1;
 	int IR_index = -1;
 
-	queryPt[0] = relSourcePos.x;//sin (azimuth) * cos(elevation);
-	queryPt[1] = relSourcePos.y;//sin (elevation);
-	queryPt[2] = relSourcePos.z;//cos (azimuth) * cos (elevation);
+	queryPt[0] = sin (azimuth) * cos(elevation);
+	queryPt[1] = sin (elevation);
+	queryPt[2] = cos (azimuth) * cos (elevation);
 
 	//cout<<"\n New Source Pos : "<<queryPt[0]<<":"<<queryPt[1]<<":"<<queryPt[2];
 
@@ -349,38 +349,6 @@ void binauralCalculation()
 
 }
 
-void audioCallBack(AudioIOData& io)
-{
-	//cout<<"\n Callback";
-	float outL, outR;
-	int itr = 0;
-
-	//Load IP buffer
-	for (int i=0;i<frameCount;i++)
-	{
-		if(tmr()) env.reset();                // Reset AD envelope
-
-		input = player(); //white() * env();              // Apply envelope to white noise
-
-		inputBuff[i] = input;
-
-	}
-
-	//Binaural calculations
-	binauralCalculation();
-
-
-	while(io())
-	{
-		io.out(0) = outputBuff_R[itr];
-		io.out(1) = outputBuff_L[itr];
-
-		itr++;
-	}
-}
-
-
-//Orientation listener thread
 
 void *getOrientations(void *x_void_ptr)
 {
@@ -408,60 +376,177 @@ void *getOrientations(void *x_void_ptr)
 		}
 		oY = atof(sBuf.c_str());
 		//cout<<"\nThread : oZ="<<oZ;
-
-
 	}
 	return NULL;
 }
 
 
 
-int main()
-{
 
-	tmr.period(0.5);
 
-	env.attack(0.01);           // Attack time
-	env.decay(0.05);            // Decay time
 
-	//Initializing Orientation listener
-	initUDP();
-	initVirtualSource();
 
-	int rc;
-	enableListen = true;
-	rc = pthread_create(&orienListenerthread, NULL, getOrientations,NULL );
+struct SphereObject {
+	int id;
+	Vec3f pos;
+	float rad;
+};
 
-	if (rc){
-		cout << "Error:unable to create orientation listener thread," << rc << endl;
-		exit(-1);
+
+
+
+
+struct AlloApp: App {
+	Material material;
+	Light light;
+	Mesh m, m2;
+
+	SphereObject ball;
+
+	SphereObject audioSrc;
+
+	float snd;
+
+	AlloApp() {
+		cout << "Created AlloApp" << endl;
+
+		snd = 0;
+
+		nav().pos(0, 0, 30);
+		light.pos(2, 3, 10);
+
+
+		ball.pos = Vec3f(0,0,0);
+		ball.rad = 0.5;
+
+
+		addSphere(m, 2);
+		m.primitive(Graphics::LINES);
+
+
+		audioSrc.pos = Vec3f(0,0,0);
+		audioSrc.rad = 0.05;
+		addSphere(m2, 2);
+
+		m.generateNormals();
+		m2.generateNormals();
+
+
+		initWindow();
+		initAudio();
+
+
+		tmr.period(0.5);
+
+		env.attack(0.01);           // Attack time
+		env.decay(0.05);            // Decay time
+
+		//Initializing Orientation listener
+		initUDP();
+		initVirtualSource();
+
+		int rc;
+		enableListen = true;
+		rc = pthread_create(&orienListenerthread, NULL, getOrientations,NULL );
+
+		if (rc){
+			cout << "Error:unable to create orientation listener thread," << rc << endl;
+			exit(-1);
+		}
+
+		const string filename = "/home/pradeep/Q4/SpatialAudio/Project/CPP/subject_020.sofa";
+
+		TestFileConvention( filename );
+
+		DisplayInformations( filename );
+
+		initHRTF();
+
+		initNearestNeighbourDS();
+		//Intializing audio
+
+		string filePath = WAV_FILE_NAME;
+		player.load(filePath.c_str());
+		player.loop();
+
+
 	}
 
-	const string filename = "/home/pradeep/Q4/SpatialAudio/Project/CPP/subject_020.sofa";
+
+	virtual void onAnimate(double dt) {
+		audioSrc.pos = relSourcePos;
+	}
+
+	virtual void onDraw(Graphics& g, const Viewpoint& v) {
+		material();
+		light();
 
 
-	TestFileConvention( filename );
+		//Reder sphere mesh
+		g.pushMatrix();
+		g.color(HSV(1,1,0.5));
+		g.translate(ball.pos);
+		g.scale(ball.rad);
+		g.draw(m);
+		g.popMatrix();
 
-	DisplayInformations( filename );
+		//Render audio obj
+		g.pushMatrix();
+		g.color(HSV(0.5,1,1));
+		g.translate(audioSrc.pos);
+		g.scale(audioSrc.rad);
+		g.draw(m2);
+		g.popMatrix();
 
-	//rotPoseR.pos(al::Vec3f(0,0,0));
+	}
 
-	initHRTF();
+	virtual void onSound(al::AudioIOData& io) {
+		gam::Sync::master().spu(audioIO().fps());
 
-	initNearestNeighbourDS();
-	//Intializing audio
+		float outL, outR;
+		int itr = 0;
 
-	string filePath = WAV_FILE_NAME;
-	player.load(filePath.c_str());
-	player.loop();
+		//Load IP buffer
+		for (int i=0;i<frameCount;i++)
+		{
+			if(tmr()) env.reset();                // Reset AD envelope
+
+			input = player(); //white() * env();              // Apply envelope to white noise
+
+			inputBuff[i] = input;
+
+		}
+
+		//Binaural calculations
+		binauralCalculation();
 
 
+		while(io())
+		{
+			io.out(0) = outputBuff_R[itr];
+			io.out(1) = outputBuff_L[itr];
 
-	AudioIO audioIO(frameCount, samplingRate, audioCallBack, NULL, channelsOut, channelsIn);
-	Sync::master().spu(audioIO.framesPerSecond());
-	audioIO.start();
-	printf("Press 'enter' to quit...\n");
-	getchar();
+			itr++;
+		}
+	}
+
+	virtual void onKeyDown(const ViewpointWindow&, const Keyboard& k) {
+		if (k.key() == ' ') {
+
+		}
+	}
+
+	virtual void onMouseDown(const Mouse &m) {
+		if (m.button() == m.LEFT) {
+
+		}
+	}
+
+};
+
+int main(int argc, char* argv[]) {
+	AlloApp app;
+	app.start();
 
 	/* wait for the second thread to finish */
 	enableListen = false;

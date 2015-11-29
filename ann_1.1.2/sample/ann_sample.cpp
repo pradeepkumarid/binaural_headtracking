@@ -103,6 +103,7 @@ int main(int argc, char **argv)
 					dataPts,					// the data points
 					nPts,						// number of points
 					dim);						// dimension of space
+	cout<<" \n Tree created with nPts = "<<kdTree->nPoints();
 
 	while (readPt(*queryIn, queryPt)) {			// read query points
 		cout << "Query point: ";				// echo query point
