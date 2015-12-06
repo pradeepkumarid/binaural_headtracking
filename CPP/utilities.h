@@ -4,7 +4,7 @@
 #ifndef UTILITIES_H
 #define UTILITIES_H
 
-#define PORT 8888
+#define PORT 12345
 #define SERVER "192.168.43.79"
 #define BUFLEN 1024
 
@@ -113,7 +113,5 @@ al::Mat3f inverse(al::Mat3f A)
 
 	return result;
 }
-
-
 
 #endif

@@ -55,10 +55,27 @@ vector< double > source_pos;     //Source Positions
 unsigned int M,R,N;
 
 float inputBuff[CHUNK];
+
 float outputBuff_L[CHUNK];
 float outputBuff_R[CHUNK];
+
+float outputBuff_L1[CHUNK];
+float outputBuff_R1[CHUNK];
+float outputBuff_L2[CHUNK];
+float outputBuff_R2[CHUNK];
+float outputBuff_L3[CHUNK];
+float outputBuff_R3[CHUNK];
+
 float overlapBuff_L[200-1];
 float overlapBuff_R[200-1];
+
+float overlapBuff_L1[200-1];
+float overlapBuff_R1[200-1];
+float overlapBuff_L2[200-1];
+float overlapBuff_R2[200-1];
+float overlapBuff_L3[200-1];
+float overlapBuff_R3[200-1];
+
 int aziTimer = 0;
 
 float azimuth = 0;
@@ -296,63 +313,124 @@ void binauralCalculation()
 {
 
 	////Hardcoding Headtracking data
-		//oX = 0; oY=0; oZ=0;
+	//oX = 0; oY=0; oZ=0;
 
-		//cout<<"\n oX="<<oX<<" :oY="<<oY<<" :oZ="<<oZ;
-		loadRotMatrix(rotMatrix, oX, oZ,oY);
+	//cout<<"\n oX="<<oX<<" :oY="<<oY<<" :oZ="<<oZ;
+	loadRotMatrix(rotMatrix, oX, oZ,oY);
 	//	relSourcePos = inverse(rotMatrix) * virtSourcePos;
-		relSourcePos = (rotMatrix.transpose()) * virtSourcePos;  //Transpose of rot mat is same as inv
-		//cout<<"\n RelSourcePos = "<<relSourcePos;
+	relSourcePos = (rotMatrix.transpose()) * virtSourcePos;  //Transpose of rot mat is same as inv
+	//cout<<"\n RelSourcePos = "<<relSourcePos;
 
 	//	rotPoseR.quat().fromEuler(al::Vec3f(oX,oY,oZ));
 	//	relSourcePos = inverse(rotPoseR.))) * virtSourcePos;
 
 
-		//cout<<"\nRelSourcePos:"<<relSourcePos.x<<":"<<relSourcePos.y<<":"<<relSourcePos.z;
-		float R1 = sqrt(relSourcePos.x * relSourcePos.x + relSourcePos.y * relSourcePos.y + relSourcePos.z* relSourcePos.z);
-		elevation = asin(relSourcePos.y / R1);
-		azimuth = asin(relSourcePos.x / (R1*elevation));
+	//cout<<"\nRelSourcePos:"<<relSourcePos.x<<":"<<relSourcePos.y<<":"<<relSourcePos.z;
+	float R1 = sqrt(relSourcePos.x * relSourcePos.x + relSourcePos.y * relSourcePos.y + relSourcePos.z* relSourcePos.z);
+	elevation = asin(relSourcePos.y / R1);
+	azimuth = asin(relSourcePos.x / (R1*elevation));
 
-		//float theta = elevation * 180 / PI;
-		//float phi = azimuth * 180 / PI;
+	//float theta = elevation * 180 / PI;
+	//float phi = azimuth * 180 / PI;
 
-		////Hardcoding theta, phi
-		//	phi = 150 ;  theta = 0;
-		//
-		//	cout<<"\nRel Azi="<<phi<<" Ele="<<theta;
-		//	phi = phi * PI / 180;
-		//	theta = theta * PI / 180;
+	////Hardcoding theta, phi
+	//	phi = 150 ;  theta = 0;
+	//
+	//	cout<<"\nRel Azi="<<phi<<" Ele="<<theta;
+	//	phi = phi * PI / 180;
+	//	theta = theta * PI / 180;
 
-		//Finding HRTF index for object
-		int index = -1;
-		int tmpIndex = -1;
-		int IR_index = -1;
 
-		queryPt[0] = relSourcePos.x;//sin (azimuth) * cos(elevation);
-		queryPt[1] = relSourcePos.y;//sin (elevation);
-		queryPt[2] = relSourcePos.z;//cos (azimuth) * cos (elevation);
 
-		//cout<<"\n New Source Pos : "<<queryPt[0]<<":"<<queryPt[1]<<":"<<queryPt[2];
+	queryPt[0] = relSourcePos.x;//sin (azimuth) * cos(elevation);
+	queryPt[1] = relSourcePos.y;//sin (elevation);
+	queryPt[2] = relSourcePos.z;//cos (azimuth) * cos (elevation);
 
-		kdTree->annkSearch(						// search
-				queryPt,						// query point
-				k,								// number of near neighbors
-				nnIdx,							// nearest neighbors (returned)
-				dists,							// distance (returned)
-				errBound);						// error bound
+	//cout<<"\n New Source Pos : "<<queryPt[0]<<":"<<queryPt[1]<<":"<<queryPt[2];
 
-		//cout<<"\n Indices : "<<nnIdx[0]<<","<<nnIdx[1]<<","<<nnIdx[2];
-		index =nnIdx[0];
-		tmpIndex = array2DIndex(index, 0, source_dims[0], source_dims[1]);
+	kdTree->annkSearch(						// search
+			queryPt,						// query point
+			k,								// number of near neighbors
+			nnIdx,							// nearest neighbors (returned)
+			dists,							// distance (returned)
+			errBound);						// error bound
 
-		//cout<<"\nKD : Index = "<<index<<" with diff="<<dists[0]<<" found azi="<<source_pos[tmpIndex]<<" ele="<<source_pos[tmpIndex+1];
+	//Point 1
+	//Finding HRTF index for object
+	int index = -1;
+	int tmpIndex = -1;
+	int IR_index = -1;
 
-		IR_index = array3DIndex(index, 0, 0, M, R, N);  //Left channel
-		convolve(inputBuff, values, IR_index, outputBuff_L, overlapBuff_L);
 
-		IR_index = array3DIndex(index, 1, 0, M, R, N);  //Right channel
-		convolve(inputBuff, values, IR_index, outputBuff_R, overlapBuff_R);
+	//cout<<"\n Indices : "<<nnIdx[0]<<","<<nnIdx[1]<<","<<nnIdx[2];
+	index =nnIdx[0];
+	tmpIndex = array2DIndex(index, 0, source_dims[0], source_dims[1]);
 
+	//cout<<"\nKD : Index = "<<index<<" with diff="<<dists[0]<<" found azi="<<source_pos[tmpIndex]<<" ele="<<source_pos[tmpIndex+1];
+
+	IR_index = array3DIndex(index, 0, 0, M, R, N);  //Left channel
+	convolve(inputBuff, values, IR_index, outputBuff_L1, overlapBuff_L1);
+
+	IR_index = array3DIndex(index, 1, 0, M, R, N);  //Right channel
+	convolve(inputBuff, values, IR_index, outputBuff_R1, overlapBuff_R1);
+
+
+	//No need to interpolate if exact HRTF is found
+	if(dists[0]==0)
+	{
+		memcpy(outputBuff_L,outputBuff_L1,sizeof(float) * CHUNK);
+		memcpy(outputBuff_R,outputBuff_R1,sizeof(float) * CHUNK);
+//		outputBuff_L[i] = outputBuff_L1[i];
+//		outputBuff_R[i] = outputBuff_R1[i];
+
+		return;
+	}
+
+	//Point 2
+	index = -1;
+	tmpIndex = -1;
+	IR_index = -1;
+
+	index =nnIdx[1];
+	tmpIndex = array2DIndex(index, 0, source_dims[0], source_dims[1]);
+
+	IR_index = array3DIndex(index, 0, 0, M, R, N);  //Left channel
+	convolve(inputBuff, values, IR_index, outputBuff_L2, overlapBuff_L2);
+
+	IR_index = array3DIndex(index, 1, 0, M, R, N);  //Right channel
+	convolve(inputBuff, values, IR_index, outputBuff_R2, overlapBuff_R2);
+
+
+
+
+	//Point 3
+	index = -1;
+	tmpIndex = -1;
+	IR_index = -1;
+
+	index =nnIdx[2];
+	tmpIndex = array2DIndex(index, 0, source_dims[0], source_dims[1]);
+
+	IR_index = array3DIndex(index, 0, 0, M, R, N);  //Left channel
+	convolve(inputBuff, values, IR_index, outputBuff_L3, overlapBuff_L3);
+
+	IR_index = array3DIndex(index, 1, 0, M, R, N);  //Right channel
+	convolve(inputBuff, values, IR_index, outputBuff_R3, overlapBuff_R3);
+
+	//Computing final output buffers based on HRTF dist
+	float weight1, weight2, weight3, sumWt;
+	weight1 = 1/dists[0] ;  weight2 = 1/dists[1]; weight3 = 1/dists[2];
+	sumWt = weight1 +weight2 + weight3;
+	weight1 /=sumWt; weight2 /=sumWt; weight3 /=sumWt;
+
+	//cout<<"\n Weights = "<<weight1<<":"<<weight2<<":"<<weight3;
+	for(int i=0;i<CHUNK;i++)
+	{
+		outputBuff_L[i] = (outputBuff_L1[i] * weight1) + (outputBuff_L2[i] * weight2) + (outputBuff_L3[i] * weight3);
+		outputBuff_R[i] = (outputBuff_R1[i] * weight1) + (outputBuff_R2[i] * weight2) + (outputBuff_R3[i] * weight3);
+	}
+
+	//cout<<"\n Done";
 }
 
 
@@ -395,7 +473,6 @@ void *getOrientations(void *x_void_ptr)
 struct SphereObject {
 	int id;
 	Vec3f pos;
-	Vec3f origPos;
 	float rad;
 };
 
@@ -484,27 +561,16 @@ struct AlloApp: App {
 
 	virtual void onAnimate(double dt) {
 		audioSrc.pos = relSourcePos;
-		audioSrc.origPos = virtSourcePos;
 	}
 
 	virtual void onDraw(Graphics& g, const Viewpoint& v) {
 		material();
 		light();
 
-
-		//Reder sphere mesh 1
+		//Reder sphere mesh
 		g.pushMatrix();
 		g.color(HSV(1,1,0.5));
-		g.translate(ball.pos + Vec3f(1.5f, 0.,0.));
-		g.scale(ball.rad);
-		g.draw(m);
-		g.popMatrix();
-
-
-		//Reder sphere mesh 2
-		g.pushMatrix();
-		g.color(HSV(0,1,0.5));
-		g.translate(ball.pos + Vec3f(-1.5f, 0.,0.));
+		g.translate(ball.pos);
 		g.scale(ball.rad);
 		g.draw(m);
 		g.popMatrix();
@@ -512,19 +578,10 @@ struct AlloApp: App {
 		//Render audio obj
 		g.pushMatrix();
 		g.color(HSV(0.2+(1+audioSrc.pos.z)*0.8/2.0, 0.5,1));
-		g.translate(audioSrc.pos + Vec3f(1.5f, 0.,0.));
+		g.translate(audioSrc.pos);
 		g.scale(audioSrc.rad);
 		g.draw(m2);
 		g.popMatrix();
-
-		g.pushMatrix();
-		g.color(HSV(0.2+(1+audioSrc.origPos.z)*0.8/2.0, 0.5,1));
-		g.translate(audioSrc.origPos + Vec3f(-1.5f, 0.,0.));
-		g.scale(audioSrc.rad);
-		g.draw(m2);
-		g.popMatrix();
-
-
 
 	}
 
