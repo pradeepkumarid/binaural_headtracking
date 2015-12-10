@@ -12,7 +12,7 @@
 
 #define CHUNK 1024
 #define WAV_FILE_NAME "/home/pradeep/Q4/SpatialAudio/Project/CPP/media/dani_california.wav"
-//#define WAV_FILE_NAME "/home/pradeep/Q4/SpatialAudio/Project/CPP/media/imperial_march_full.wav"
+//#define WAV_FILE_NAME_2 "/home/pradeep/Q4/SpatialAudio/Project/CPP/media/imperial_march_full.wav"
 
 /************************************************************************************/
 /*!
@@ -50,7 +50,7 @@ inline const std::size_t array2DIndex(const unsigned long i,
 
 inline void convolve(float inputBuff[], std::vector< double > source_pos, int index, float outputBuff[], float overlapBuff[])
 {
-    int Alen = CHUNK, Blen = 200;
+	int Alen = CHUNK, Blen = 200;
 	for (int i = 0; i < (Alen + Blen - 1); i++ )
 	{
 		int i1 = i;
@@ -68,12 +68,62 @@ inline void convolve(float inputBuff[], std::vector< double > source_pos, int in
 				outputBuff[i] = tmp + overlapBuff[i];
 			else
 				outputBuff[i] = tmp;
+
+			//Clipping
+			if(outputBuff[i] > 1.0)
+				outputBuff[i] = 1.0;
+
+
 		}
 		else
 			overlapBuff[i-Alen] = tmp;
 	}
 
 }
+
+
+
+inline void interpConvolve(float inputBuff[], std::vector< double > source_pos, int* index, double * dist, float outputBuff[], float overlapBuff[])
+{
+
+	//Normalizing weights based on distance
+	float w1 = 1/dist[0],  w2 = 1/dist[1], w3 = 1/dist[2];
+	float sumW = w1+w2+w3;
+	w1 /=sumW;  w2 /=sumW; w3 /=sumW;
+
+
+	int Alen = CHUNK, Blen = 200;
+	for (int i = 0; i < (Alen + Blen - 1); i++ )
+	{
+		int i1 = i;
+		float tmp =0;
+
+		for (int j = 0; j < Blen; j++ )
+		{
+			if(i1>=0 && i1<Alen)
+				tmp += inputBuff[i1] * ( w1 * source_pos[index[0]+j]
+				                       + w2 *  source_pos[index[1]+j]
+				                       + w3 *  source_pos[index[2]+j] );
+			i1--;
+		}
+		if(i<Alen)
+		{
+			if(i<Blen-1)
+				outputBuff[i] = tmp + overlapBuff[i];
+			else
+				outputBuff[i] = tmp;
+
+//			//Clipping
+			if(outputBuff[i] > 1.0)
+				outputBuff[i] = 1.0;
+		}
+		else
+			overlapBuff[i-Alen] = tmp;
+	}
+
+}
+
+
 
 inline void loadRotMatrix(al::Mat3f &R, float phi, float theta, float psi)
 {
@@ -98,8 +148,8 @@ al::Mat3f inverse(al::Mat3f A)
 {
 	al::Mat3f result;
 	double determinant =    +A(0,0)*(A(1,1)*A(2,2)-A(2,1)*A(1,2))
-	                        -A(0,1)*(A(1,0)*A(2,2)-A(1,2)*A(2,0))
-	                        +A(0,2)*(A(1,0)*A(2,1)-A(1,1)*A(2,0));
+	                        		-A(0,1)*(A(1,0)*A(2,2)-A(1,2)*A(2,0))
+	                        		+A(0,2)*(A(1,0)*A(2,1)-A(1,1)*A(2,0));
 	double invdet = 1/determinant;
 	result(0,0) =  (A(1,1)*A(2,2)-A(2,1)*A(1,2))*invdet;
 	result(1,0) = -(A(0,1)*A(2,2)-A(0,2)*A(2,1))*invdet;

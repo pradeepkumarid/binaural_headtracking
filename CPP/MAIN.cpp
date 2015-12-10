@@ -1,3 +1,5 @@
+
+
 #include "allocore/io/al_App.hpp"
 #include <time.h>
 #include <stdio.h>
@@ -45,7 +47,9 @@ AD<> env;                     // Attack/Decay envelope
 Accum<> tmr;                  // Timer to reset AD envelope
 SamplePlayer<> player;
 
-sofa::SimpleFreeFieldHRIR HRIR("/home/pradeep/Q4/SpatialAudio/Project/CPP/subject_020.sofa");
+sofa::SimpleFreeFieldHRIR HRIR("/home/pradeep/Q4/SpatialAudio/Project/CPP/subject_020.sofa");   //020 / 003/ 051
+//SOFA download from http://sofacoustics.org/data/database/cipic/
+
 vector< double > values;
 double set[500000];
 

@@ -64,6 +64,7 @@ int aziTimer = 0;
 float azimuth = 0;
 float elevation = 0;
 
+float prevdt = 0;
 
 //UDP params
 struct sockaddr_in si_me, si_other;
@@ -93,6 +94,7 @@ ANNpoint			queryPt;				// query point
 ANNidxArray			nnIdx;					// near neighbor indices
 ANNdistArray		dists;					// near neighbor distances
 ANNkd_tree*			kdTree;					// search structure
+
 
 
 static void TestFileConvention(const string & filename,
@@ -294,76 +296,31 @@ void initNearestNeighbourDS()
 void binauralCalculation()
 {
 
-	////Hardcoding Headtracking data
-	//oX = 0; oY=0; oZ=0;
+		//Finding HRTF index for object
+		int index = -1;
+		int tmpIndex = -1;
+		int IR_index = -1;
 
-	//cout<<"\n oX="<<oX<<" :oY="<<oY<<" :oZ="<<oZ;
-	loadRotMatrix(rotMatrix, oX, oZ,oY);
-	//	relSourcePos = inverse(rotMatrix) * virtSourcePos;
-	relSourcePos = (rotMatrix.transpose()) * virtSourcePos;  //Transpose of rot mat is same as inv
-	//cout<<"\n RelSourcePos = "<<relSourcePos;
+		queryPt[0] = relSourcePos.x;//sin (azimuth) * cos(elevation);
+		queryPt[1] = relSourcePos.y;//sin (elevation);
+		queryPt[2] = relSourcePos.z;//cos (azimuth) * cos (elevation);
 
-	//	rotPoseR.quat().fromEuler(al::Vec3f(oX,oY,oZ));
-	//	relSourcePos = inverse(rotPoseR.))) * virtSourcePos;
-
-
-	//cout<<"\nRelSourcePos:"<<relSourcePos.x<<":"<<relSourcePos.y<<":"<<relSourcePos.z;
-	float R1 = sqrt(relSourcePos.x * relSourcePos.x + relSourcePos.y * relSourcePos.y + relSourcePos.z* relSourcePos.z);
-	elevation = asin(relSourcePos.y / R1);
-	azimuth = asin(relSourcePos.x / (R1*elevation));
-
-	//float theta = elevation * 180 / PI;
-	//float phi = azimuth * 180 / PI;
-
-	////Hardcoding theta, phi
-	//	phi = 150 ;  theta = 0;
-	//
-	//	cout<<"\nRel Azi="<<phi<<" Ele="<<theta;
-	//	phi = phi * PI / 180;
-	//	theta = theta * PI / 180;
-
-	//Finding HRTF index for object
-	int index = -1;
-	int IR_index[3];
-
-	queryPt[0] = relSourcePos.x;//sin (azimuth) * cos(elevation);
-	queryPt[1] = relSourcePos.y;//sin (elevation);
-	queryPt[2] = relSourcePos.z;//cos (azimuth) * cos (elevation);
-
-	//cout<<"\n New Source Pos : "<<queryPt[0]<<":"<<queryPt[1]<<":"<<queryPt[2];
-
-	kdTree->annkSearch(						// search
-			queryPt,						// query point
-			k,								// number of near neighbors
-			nnIdx,							// nearest neighbors (returned)
-			dists,							// distance (returned)
-			errBound);						// error bound
+		kdTree->annkSearch(						// search
+				queryPt,						// query point
+				k,								// number of near neighbors
+				nnIdx,							// nearest neighbors (returned)
+				dists,							// distance (returned)
+				errBound);						// error bound
 
 
+		index =nnIdx[0];
 
-	if(dists[0]==0)
-	{
-		cout<<"\n No interp";
-		//No need to interpolate if exact match is found!
-		index = array3DIndex(nnIdx[0], 0, 0, M, R, N);  //Left channel
-		convolve(inputBuff, values, index, outputBuff_L, overlapBuff_L);
+		IR_index = array3DIndex(index, 0, 0, M, R, N);  //Left channel
+		convolve(inputBuff, values, IR_index, outputBuff_L, overlapBuff_L);
 
-		index = array3DIndex(nnIdx[0], 1, 0, M, R, N);  //Right channel
-		convolve(inputBuff, values, index, outputBuff_R, overlapBuff_R);
-	}
-	else
-	{
-		cout<<"\n Interp :"<<dists[0]<<":"<<dists[1]<<":"<<dists[2];
-		IR_index[0] = array3DIndex(nnIdx[0], 0, 0, M, R, N);  //Left channel
-		IR_index[1] = array3DIndex(nnIdx[1], 0, 0, M, R, N);  //Left channel
-		IR_index[2] = array3DIndex(nnIdx[2], 0, 0, M, R, N);  //Left channel
-		interpConvolve(inputBuff, values, IR_index,dists,  outputBuff_L, overlapBuff_L);
+		IR_index = array3DIndex(index, 1, 0, M, R, N);  //Right channel
+		convolve(inputBuff, values, IR_index, outputBuff_R, overlapBuff_R);
 
-		IR_index[0] = array3DIndex(nnIdx[0], 1, 0, M, R, N);  //Right channel
-		IR_index[1] = array3DIndex(nnIdx[1], 1, 0, M, R, N);  //Right channel
-		IR_index[2] = array3DIndex(nnIdx[2], 1, 0, M, R, N);  //Right channel
-		interpConvolve(inputBuff, values, IR_index,dists,  outputBuff_R, overlapBuff_R);
-	}
 }
 
 
@@ -494,6 +451,16 @@ struct AlloApp: App {
 
 
 	virtual void onAnimate(double dt) {
+		prevdt+=dt;
+
+		virtSourcePos.x = sin(prevdt);
+		virtSourcePos.z = cos(prevdt);
+
+		//cout<<"\n Src Pos = "<<virtSourcePos<<" : dt="<<dt;
+		loadRotMatrix(rotMatrix, oX, oZ,oY);
+
+		relSourcePos = (rotMatrix.transpose()) * virtSourcePos;
+
 		audioSrc.pos = relSourcePos;
 		audioSrc.origPos = virtSourcePos;
 	}
@@ -535,8 +502,6 @@ struct AlloApp: App {
 		g.draw(m2);
 		g.popMatrix();
 
-
-
 	}
 
 	virtual void onSound(al::AudioIOData& io) {
@@ -549,7 +514,8 @@ struct AlloApp: App {
 		{
 			if(tmr()) env.reset();                // Reset AD envelope
 
-			input = player(); //white() * env();              // Apply envelope to white noise
+			input = white() * env();              // Apply envelope to white noise - input
+			//input = player();						//use sample player as input
 
 			inputBuff[i] = input;
 

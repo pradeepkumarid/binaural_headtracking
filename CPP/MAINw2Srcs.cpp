@@ -54,11 +54,21 @@ vector< double > source_pos;     //Source Positions
 
 unsigned int M,R,N;
 
-float inputBuff[CHUNK];
-float outputBuff_L[CHUNK];
-float outputBuff_R[CHUNK];
-float overlapBuff_L[200-1];
-float overlapBuff_R[200-1];
+float inputBuff1[CHUNK];
+float inputBuff2[CHUNK];
+
+float outputBuff_L1[CHUNK];
+float outputBuff_R1[CHUNK];
+float overlapBuff_L1[200-1];
+float overlapBuff_R1[200-1];
+
+
+float outputBuff_L2[CHUNK];
+float outputBuff_R2[CHUNK];
+float overlapBuff_L2[200-1];
+float overlapBuff_R2[200-1];
+
+
 int aziTimer = 0;
 
 float azimuth = 0;
@@ -74,9 +84,14 @@ pthread_t orienListenerthread;
 bool enableListen;
 
 
-al::Vec3f virtSourcePos; //X,Y,Z
-al::Vec3f relSourcePos; //X' , Y', Z'
+al::Vec3f virtSourcePos1; //X,Y,Z
+al::Vec3f virtSourcePos2; //X,Y,Z
+
+al::Vec3f relSourcePos1; //X' , Y', Z'
+al::Vec3f relSourcePos2; //X' , Y', Z'
+
 al::Mat3f rotMatrix; //R
+
 
 
 
@@ -248,8 +263,10 @@ void initUDP()
 void initVirtualSource()
 {
 	//Audio Source Position
-	virtSourcePos = al::Vec3f(0.0f,0.0f,1.0f);
-	relSourcePos = al::Vec3f(0.0f,0.0f,1.0f);
+	virtSourcePos1 = al::Vec3f(1.0f,0.0f,0.0f);
+	virtSourcePos2 = al::Vec3f(-1.0f,0.0f,0.0f);
+	relSourcePos1 = al::Vec3f(1.0f,0.0f,0.0f);
+	relSourcePos2 = al::Vec3f(-1.0f,0.0f,0.0f);
 }
 
 void initNearestNeighbourDS()
@@ -295,63 +312,53 @@ void initNearestNeighbourDS()
 void binauralCalculation()
 {
 
-	////Hardcoding Headtracking data
-		//oX = 0; oY=0; oZ=0;
+	loadRotMatrix(rotMatrix, oX, oZ,oY);
+	relSourcePos1 = (rotMatrix.transpose()) * virtSourcePos1;
+	relSourcePos2 = (rotMatrix.transpose()) * virtSourcePos2;
 
-		//cout<<"\n oX="<<oX<<" :oY="<<oY<<" :oZ="<<oZ;
-		loadRotMatrix(rotMatrix, oX, oZ,oY);
-	//	relSourcePos = inverse(rotMatrix) * virtSourcePos;
-		relSourcePos = (rotMatrix.transpose()) * virtSourcePos;  //Transpose of rot mat is same as inv
-		//cout<<"\n RelSourcePos = "<<relSourcePos;
+	//Finding HRTF index for object
+	int index = -1;
+	int tmpIndex = -1;
+	int IR_index = -1;
 
-	//	rotPoseR.quat().fromEuler(al::Vec3f(oX,oY,oZ));
-	//	relSourcePos = inverse(rotPoseR.))) * virtSourcePos;
+	queryPt[0] = relSourcePos1.x;
+	queryPt[1] = relSourcePos1.y;
+	queryPt[2] = relSourcePos1.z;
 
+	kdTree->annkSearch(						// search
+			queryPt,						// query point
+			k,								// number of near neighbors
+			nnIdx,							// nearest neighbors (returned)
+			dists,							// distance (returned)
+			errBound);						// error bound
 
-		//cout<<"\nRelSourcePos:"<<relSourcePos.x<<":"<<relSourcePos.y<<":"<<relSourcePos.z;
-		float R1 = sqrt(relSourcePos.x * relSourcePos.x + relSourcePos.y * relSourcePos.y + relSourcePos.z* relSourcePos.z);
-		elevation = asin(relSourcePos.y / R1);
-		azimuth = asin(relSourcePos.x / (R1*elevation));
+	index =nnIdx[0];
 
-		//float theta = elevation * 180 / PI;
-		//float phi = azimuth * 180 / PI;
+	IR_index = array3DIndex(index, 0, 0, M, R, N);  //Left channel
+	convolve(inputBuff1, values, IR_index, outputBuff_L1, overlapBuff_L1);
 
-		////Hardcoding theta, phi
-		//	phi = 150 ;  theta = 0;
-		//
-		//	cout<<"\nRel Azi="<<phi<<" Ele="<<theta;
-		//	phi = phi * PI / 180;
-		//	theta = theta * PI / 180;
+	IR_index = array3DIndex(index, 1, 0, M, R, N);  //Right channel
+	convolve(inputBuff1, values, IR_index, outputBuff_R1, overlapBuff_R1);
 
-		//Finding HRTF index for object
-		int index = -1;
-		int tmpIndex = -1;
-		int IR_index = -1;
+	//For Source 2
+	queryPt[0] = relSourcePos2.x;
+	queryPt[1] = relSourcePos2.y;
+	queryPt[2] = relSourcePos2.z;
 
-		queryPt[0] = relSourcePos.x;//sin (azimuth) * cos(elevation);
-		queryPt[1] = relSourcePos.y;//sin (elevation);
-		queryPt[2] = relSourcePos.z;//cos (azimuth) * cos (elevation);
+	kdTree->annkSearch(						// search
+			queryPt,						// query point
+			k,								// number of near neighbors
+			nnIdx,							// nearest neighbors (returned)
+			dists,							// distance (returned)
+			errBound);						// error bound
 
-		//cout<<"\n New Source Pos : "<<queryPt[0]<<":"<<queryPt[1]<<":"<<queryPt[2];
+	index =nnIdx[0];
 
-		kdTree->annkSearch(						// search
-				queryPt,						// query point
-				k,								// number of near neighbors
-				nnIdx,							// nearest neighbors (returned)
-				dists,							// distance (returned)
-				errBound);						// error bound
+	IR_index = array3DIndex(index, 0, 0, M, R, N);  //Left channel
+	convolve(inputBuff2, values, IR_index, outputBuff_L2, overlapBuff_L2);
 
-		//cout<<"\n Indices : "<<nnIdx[0]<<","<<nnIdx[1]<<","<<nnIdx[2];
-		index =nnIdx[0];
-		tmpIndex = array2DIndex(index, 0, source_dims[0], source_dims[1]);
-
-		//cout<<"\nKD : Index = "<<index<<" with diff="<<dists[0]<<" found azi="<<source_pos[tmpIndex]<<" ele="<<source_pos[tmpIndex+1];
-
-		IR_index = array3DIndex(index, 0, 0, M, R, N);  //Left channel
-		convolve(inputBuff, values, IR_index, outputBuff_L, overlapBuff_L);
-
-		IR_index = array3DIndex(index, 1, 0, M, R, N);  //Right channel
-		convolve(inputBuff, values, IR_index, outputBuff_R, overlapBuff_R);
+	IR_index = array3DIndex(index, 1, 0, M, R, N);  //Right channel
+	convolve(inputBuff2, values, IR_index, outputBuff_R2, overlapBuff_R2);
 
 }
 
@@ -381,15 +388,9 @@ void *getOrientations(void *x_void_ptr)
 			itr++;
 		}
 		oY = atof(sBuf.c_str());
-		//cout<<"\nThread : oZ="<<oZ;
 	}
 	return NULL;
 }
-
-
-
-
-
 
 
 struct SphereObject {
@@ -399,18 +400,14 @@ struct SphereObject {
 	float rad;
 };
 
-
-
-
-
 struct AlloApp: App {
 	Material material;
 	Light light;
-	Mesh m, m2;
+	Mesh m, m2, m4;
 
 	SphereObject ball;
 
-	SphereObject audioSrc;
+	SphereObject audioSrc1, audioSrc2;
 
 	float snd;
 
@@ -431,16 +428,21 @@ struct AlloApp: App {
 		addSphere(m, 2);
 		m.primitive(Graphics::LINES);
 
+		audioSrc1.pos = Vec3f(0,0,0);
+		audioSrc1.rad = 0.05;
 
-		audioSrc.pos = Vec3f(0,0,0);
-		audioSrc.rad = 0.05;
+		audioSrc2.pos = Vec3f(0,0,0);
+		audioSrc2.rad = 0.05;
+
 		addSphere(m2, 2);
+		addSphere(m4, 2);
 
 		m.generateNormals();
+
 		m2.generateNormals();
+		m4.generateNormals();
 
-
-		initWindow();
+		//initWindow();
 		initAudio(44100, 1024);
 
 
@@ -477,14 +479,17 @@ struct AlloApp: App {
 		player.load(filePath.c_str());
 		player.loop();
 
-
 		gam::Sync::master().spu(audioIO().fps());
 	}
 
 
 	virtual void onAnimate(double dt) {
-		audioSrc.pos = relSourcePos;
-		audioSrc.origPos = virtSourcePos;
+		audioSrc1.pos = relSourcePos1;
+		audioSrc1.origPos = virtSourcePos1;
+
+
+		audioSrc2.pos = relSourcePos2;
+		audioSrc2.origPos = virtSourcePos2;
 	}
 
 	virtual void onDraw(Graphics& g, const Viewpoint& v) {
@@ -509,22 +514,36 @@ struct AlloApp: App {
 		g.draw(m);
 		g.popMatrix();
 
-		//Render audio obj
+		//Render audio obj 1
 		g.pushMatrix();
-		g.color(HSV(0.2+(1+audioSrc.pos.z)*0.8/2.0, 0.5,1));
-		g.translate(audioSrc.pos + Vec3f(1.5f, 0.,0.));
-		g.scale(audioSrc.rad);
+		g.color(HSV(0.2+(1+audioSrc1.pos.z)*0.8/2.0, 0.5,1));
+		g.translate(audioSrc1.pos + Vec3f(1.5f, 0.,0.));
+		g.scale(audioSrc1.rad);
 		g.draw(m2);
 		g.popMatrix();
 
 		g.pushMatrix();
-		g.color(HSV(0.2+(1+audioSrc.origPos.z)*0.8/2.0, 0.5,1));
-		g.translate(audioSrc.origPos + Vec3f(-1.5f, 0.,0.));
-		g.scale(audioSrc.rad);
+		g.color(HSV(0.2+(1+audioSrc1.origPos.z)*0.8/2.0, 0.5,1));
+		g.translate(audioSrc1.origPos + Vec3f(-1.5f, 0.,0.));
+		g.scale(audioSrc1.rad);
 		g.draw(m2);
 		g.popMatrix();
 
 
+		//Render audio obj 2
+		g.pushMatrix();
+		g.color(HSV(0.8 - (1+audioSrc2.pos.z)*0.8/2.0, 0.5,1));
+		g.translate(audioSrc2.pos + Vec3f(1.5f, 0.,0.));
+		g.scale(audioSrc2.rad);
+		g.draw(m4);
+		g.popMatrix();
+
+		g.pushMatrix();
+		g.color(HSV(0.8 - (1+audioSrc2.origPos.z)*0.8/2.0, 0.5,1));
+		g.translate(audioSrc2.origPos + Vec3f(-1.5f, 0.,0.));
+		g.scale(audioSrc2.rad);
+		g.draw(m4);
+		g.popMatrix();
 
 	}
 
@@ -538,9 +557,14 @@ struct AlloApp: App {
 		{
 			if(tmr()) env.reset();                // Reset AD envelope
 
+			input = white() * env();              // Apply envelope to white noise
+
+			inputBuff2[i] = input;
+
+
 			input = player(); //white() * env();              // Apply envelope to white noise
 
-			inputBuff[i] = input;
+			inputBuff1[i] = input;
 
 		}
 
@@ -550,8 +574,8 @@ struct AlloApp: App {
 
 		while(io())
 		{
-			io.out(0) = outputBuff_R[itr];
-			io.out(1) = outputBuff_L[itr];
+			io.out(0) = (outputBuff_R1[itr] + outputBuff_R2[itr])/2.0;
+			io.out(1) = (outputBuff_L1[itr] + outputBuff_L2[itr])/2.0;
 
 			itr++;
 		}
