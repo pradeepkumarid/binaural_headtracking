@@ -492,8 +492,8 @@ struct AlloApp: App {
 	}
 
 	virtual void onDraw(Graphics& g, const Viewpoint& v) {
-		material();
-		light();
+	//	material();
+	//	light();
 
 
 		//Reder sphere mesh 1
@@ -542,7 +542,8 @@ struct AlloApp: App {
 		{
 			if(tmr()) env.reset();                // Reset AD envelope
 
-			input = player(); //white() * env();              // Apply envelope to white noise
+			//input = white() * env();              // Apply envelope to white noise
+			input = player();
 
 			inputBuff[i] = input;
 

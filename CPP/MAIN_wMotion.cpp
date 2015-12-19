@@ -466,8 +466,8 @@ struct AlloApp: App {
 	}
 
 	virtual void onDraw(Graphics& g, const Viewpoint& v) {
-		material();
-		light();
+		//material();
+		//light();
 
 
 		//Reder sphere mesh 1
